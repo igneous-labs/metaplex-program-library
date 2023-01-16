@@ -1,3 +1,4 @@
+use mpl_token_metadata::{instruction::set_token_standard, pda::find_metadata_account};
 use solana_client::rpc_request::TokenAccountsFilter;
 use solana_sdk::account::ReadableAccount;
 
@@ -594,6 +595,30 @@ fn create_metadata_account_call(
     (metadata, metadata_key)
 }
 
+fn set_token_standard_call(
+    app_matches: &ArgMatches,
+    payer: Keypair,
+    client: RpcClient,
+) {
+    let mint = pubkey_of(app_matches, "mint").unwrap();
+    let metadata_account = find_metadata_account(&mint).0;
+    let mut transaction = Transaction::new_with_payer(
+        &[
+            set_token_standard(
+                mpl_token_metadata::id(),
+                metadata_account,
+                payer.pubkey(),
+                mint,
+                None,
+            )
+        ],
+        Some(&payer.pubkey())
+    );
+    let recent_blockhash = client.get_latest_blockhash().unwrap();
+    transaction.sign(&vec![&payer], recent_blockhash);
+    client.send_and_confirm_transaction(&transaction).unwrap();
+}
+
 fn main() {
     let app_matches = App::new(crate_name!())
         .about(crate_description!())
@@ -623,6 +648,18 @@ fn main() {
                 .takes_value(true)
                 .global(true)
                 .help("Update authority filepath or url to keypair besides yourself, defaults to normal keypair"),
+        )
+        .subcommand(
+            SubCommand::with_name("set_token_standard")
+                .about("Set Token standard for an existing mint with no edition account")
+                .arg(
+                    Arg::with_name("mint")
+                        .long("mint")
+                        .value_name("MINT")
+                        .takes_value(true)
+                        .required(true)
+                        .help("Pubkey for an existing mint"),
+                )
         )
         .subcommand(
             SubCommand::with_name("create_metadata_accounts")
@@ -834,6 +871,10 @@ fn main() {
 
     let (sub_command, sub_matches) = app_matches.subcommand();
     match (sub_command, sub_matches) {
+        ("set_token_standard", Some(arg_matches)) => {
+            set_token_standard_call(arg_matches, payer, client);
+            println!("Token standard set");
+        },
         ("create_metadata_accounts", Some(arg_matches)) => {
             let (metadata, metadata_key) = create_metadata_account_call(arg_matches, payer, client);
             println!(
